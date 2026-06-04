@@ -157,34 +157,6 @@ Para usar o Gemini de fato:
 
 ---
 
-## 🐳 (Opcional) Rodando o N8N com Docker
-
-```yaml
-services:
-  n8n:
-    image: docker.n8n.io/n8nio/n8n
-    restart: always
-    ports:
-      - "5678:5678"
-    environment:
-      - OPENWEATHER_API_KEY=sua_chave_aqui
-      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
-    volumes:
-      - n8n_data:/home/node/.n8n
-
-volumes:
-  n8n_data:
-```
-
-Suba com:
-```bash
-docker compose up -d
-```
-
-E acesse o N8N em <http://localhost:5678>.
-
----
-
 ## 🔒 Segurança
 
 - Nenhuma chave da OpenWeather ou token do Telegram está embutido neste repositório.
