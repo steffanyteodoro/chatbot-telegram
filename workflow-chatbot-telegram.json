@@ -1,0 +1,295 @@
+{
+  "name": "workflow-chatbot-telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "2f0aa507-40f0-4c4b-b1fa-94700635d705",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -880,
+        128
+      ],
+      "webhookId": "telegram-weather-bot",
+      "credentials": {
+        "telegramApi": {
+          "id": "YVtMEPhGLgn5vSPc",
+          "name": "[TELEGRAM] ClimaRocket"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-queue",
+              "name": "queue",
+              "value": "={{ $json.message.text.trim().toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\s*,\\s*/g, ',').replace(/\\s+/g, ' ').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-chat-id",
+              "name": "chat_id",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "number"
+            },
+            {
+              "id": "assign-raw-text",
+              "name": "raw_text",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0c455550-d115-4bf0-847e-806b8b528825",
+      "name": "Formatar Entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -656,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.queue }}"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            },
+            {
+              "name": "lang",
+              "value": "pt_br"
+            },
+            {
+              "name": "appid",
+              "value": "={{ $env.OPENWEATHER_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "05ba0521-a6a3-4414-be46-80d6e457c976",
+      "name": "Consultar OpenWeather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition-status",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3b043d3e-c826-443c-82df-a0592449ed67",
+      "name": "Resposta Válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrai e formata os dados da resposta da OpenWeather\nconst body = $input.item.json.body;\nconst data = typeof body === 'string' ? JSON.parse(body) : body;\n\nconst cityName = data.name || 'Cidade Desconhecida';\nconst tempRaw = data.main?.temp;\nconst temp = tempRaw !== undefined ? Math.round(tempRaw) : null;\nconst description = data.weather?.[0]?.description || '';\nconst humidity = data.main?.humidity;\nconst feelsLike = data.main?.feels_like !== undefined ? Math.round(data.main.feels_like) : null;\n\n// Escolhe emoji baseado na temperatura\nlet emoji = '🌤️';\nif (temp !== null) {\n  if (temp >= 35) emoji = '🔥';\n  else if (temp >= 28) emoji = '☀️';\n  else if (temp >= 20) emoji = '🌤️';\n  else if (temp >= 15) emoji = '⛅';\n  else if (temp >= 10) emoji = '🌥️';\n  else emoji = '🥶';\n}\n\n// Capitaliza nome da cidade\nconst formattedCity = cityName\n  .split(' ')\n  .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())\n  .join(' ');\n\n// Monta mensagem determinística (também usada como fallback do Gemini)\nlet message;\nif (temp !== null) {\n  message = `${emoji} A temperatura em ${formattedCity} é de ${temp}°C.`;\n  if (description) {\n    const desc = description.charAt(0).toUpperCase() + description.slice(1);\n    message += `\\n🌡️ Sensação térmica: ${feelsLike}°C | ${desc}`;\n  }\n  if (humidity !== undefined) {\n    message += `\\n💧 Umidade: ${humidity}%`;\n  }\n} else {\n  message = `${emoji} Temperatura em ${formattedCity} indisponível no momento.`;\n}\n\nreturn {\n  message,\n  city: formattedCity,\n  temp,\n  description,\n  humidity,\n  feelsLike,\n  ok: true\n};"
+      },
+      "id": "20303344-5975-4b96-8b1e-fb157bf56b40",
+      "name": "Extrair e Formatar Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Formatar Entrada').item.json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "808e3be9-9d1e-4bae-9c06-07443b132583",
+      "name": "Enviar Resposta ao Usuário",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        416,
+        0
+      ],
+      "webhookId": "31532c7a-d8b3-41ea-84da-85e4d18ab812",
+      "credentials": {
+        "telegramApi": {
+          "id": "YVtMEPhGLgn5vSPc",
+          "name": "[TELEGRAM] ClimaRocket"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Formatar Entrada').item.json.chat_id }}",
+        "text": "❌ Cidade não encontrada. Use o formato Cidade,UF,BR (ex.: São Paulo,SP,BR).",
+        "additionalFields": {}
+      },
+      "id": "7bd2e5fc-560c-437f-ac65-57d934f81a78",
+      "name": "Enviar Mensagem de Erro",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        240
+      ],
+      "webhookId": "3afe3188-f6c8-4ce8-84f8-41006e5762bd",
+      "credentials": {
+        "telegramApi": {
+          "id": "YVtMEPhGLgn5vSPc",
+          "name": "[TELEGRAM] ClimaRocket"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json;\nreturn {\n  message: input.message,\n  ok: input.ok\n};"
+      },
+      "id": "c7ed5e96-6740-4869-b162-fb585602c2d3",
+      "name": "Fallback Gemini",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Formatar Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Entrada": {
+      "main": [
+        [
+          {
+            "node": "Consultar OpenWeather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar OpenWeather": {
+      "main": [
+        [
+          {
+            "node": "Resposta Válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta Válida?": {
+      "main": [
+        [
+          {
+            "node": "Extrair e Formatar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar Mensagem de Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair e Formatar Dados": {
+      "main": [
+        [
+          {
+            "node": "Fallback Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Gemini": {
+      "main": [
+        [
+          {
+            "node": "Enviar Resposta ao Usuário",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "YGNDaMCqC7K13Cy1",
+  "tags": []
+}
